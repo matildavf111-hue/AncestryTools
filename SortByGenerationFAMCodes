@@ -1,0 +1,63 @@
+function exportFamilyTreeWithGenerations() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sourceSheet = ss.getSheetByName('Jordan'); // Change as needed
+  const outputSheetName = 'FamilyGenerations';
+  let outputSheet = ss.getSheetByName(outputSheetName);
+  if (!outputSheet) {
+    outputSheet = ss.insertSheet(outputSheetName);
+  } else {
+    outputSheet.clear();
+  }
+
+  const data = sourceSheet.getDataRange().getValues();
+  const firstNameCol = 1; // B
+  const lastNameCol = 2;  // C
+  const dobCol = 3;       // D
+  const codeCol = 4;      // E
+  const parentCol = 5;    // F
+
+  // Build lookup map: code => row
+  const codeToRow = {};
+  for (let i = 1; i < data.length; i++) {
+    codeToRow[data[i][codeCol]] = data[i];
+  }
+
+  // Precompute generations and maxGen
+  let maxGen = 0;
+  const generationsList = [];
+  for (let i = 1; i < data.length; i++) {
+    let codes = [];
+    let curCode = data[i][parentCol];
+    while (curCode && codeToRow[curCode]) {
+      codes.push(curCode);
+      curCode = codeToRow[curCode][parentCol];
+    }
+    generationsList.push(codes);
+    if (codes.length > maxGen) maxGen = codes.length;
+  }
+
+  // Prepare output data
+  const output = [];
+  const headers = ['First Name', 'Last Name', 'DOB'];
+  for (let g = 1; g <= maxGen; g++) {
+    headers.push(`Generation -${g} Code`);
+  }
+  output.push(headers);
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const genCodes = generationsList[i-1];
+    const outputRow = [
+      row[firstNameCol],
+      row[lastNameCol],
+      row[dobCol]
+    ];
+    for (let g = 0; g < maxGen; g++) {
+      outputRow.push(genCodes[g] || '');
+    }
+    output.push(outputRow);
+  }
+
+  // Write all data at once
+  outputSheet.getRange(1, 1, output.length, output[0].length).setValues(output);
+}
