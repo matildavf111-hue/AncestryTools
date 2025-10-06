@@ -1,0 +1,78 @@
+function parseGedcom() {
+  var file = DriveApp.getFilesByName("Brand Family Tree.ged").next();
+  var content = file.getBlob().getDataAsString();
+  var lines = content.split('\n');
+  var data = [];
+  var person = null;
+  var currentTag = '';
+  var inIndi = false;
+  var allKeys = new Set();
+
+  // Parse GEDCOM
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (!line) continue;
+    var parts = line.split(' ');
+    var level = parseInt(parts[0]);
+    var tag = parts[1];
+    var value = parts.slice(2).join(' ');
+
+    if (level === 0 && /@I\d+@ INDI/.test(line)) {
+      if (person) data.push(person);
+      person = {};
+      inIndi = true;
+      currentTag = '';
+    } else if (level === 0) {
+      inIndi = false;
+      currentTag = '';
+    } else if (inIndi) {
+      if (level === 1) {
+        currentTag = tag;
+        if (value) {
+          person[tag] = value;
+          allKeys.add(tag);
+        } else {
+          if (!person[tag]) person[tag] = {};
+        }
+      } else if (level === 2 && currentTag) {
+        if (typeof person[currentTag] !== 'object') person[currentTag] = {};
+        person[currentTag][tag] = value;
+        allKeys.add(currentTag + ' ' + tag);
+      }
+    }
+  }
+  if (person) data.push(person);
+
+  // Build headers (flat)
+  var headers = Array.from(allKeys);
+  data.forEach(function(p) {
+    for (var k in p) {
+      if (typeof p[k] === 'object') {
+        Object.keys(p[k]).forEach(function(subk) {
+          var combined = k + ' ' + subk;
+          if (!headers.includes(combined)) headers.push(combined);
+        });
+      }
+    }
+  });
+
+  // Build all rows at once
+  var rows = data.map(function(p) {
+    return headers.map(function(h) {
+      if (h.includes(' ')) {
+        var parts = h.split(' ');
+        return (p[parts[0]] && typeof p[parts[0]] === 'object') ? (p[parts[0]][parts[1]] || '') : '';
+      } else {
+        return (typeof p[h] === 'object') ? '' : (p[h] || '');
+      }
+    });
+  });
+
+  // Write to sheet in one go
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  sheet.clearContents();
+  var totalRows = rows.length + 1;
+  var totalCols = headers.length;
+  var range = sheet.getRange(1, 1, totalRows, totalCols);
+  range.setValues([headers].concat(rows));
+}
